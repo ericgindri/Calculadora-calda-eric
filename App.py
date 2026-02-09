@@ -2,62 +2,60 @@ import streamlit as st
 import pandas as pd
 import math
 
-# Configuração da página
-st.set_page_config(page_title="Calculadora de Calda - Eric", page_icon="🚜")
+st.set_page_config(page_title="Calculadora Agrícola Eric", page_icon="🚜")
 
-st.title("🚜 Calculadora de Mistura de Calda")
+st.title("🚜 Minha Calculadora de Calda")
 st.markdown("---")
 
-# --- ENTRADAS DE DADOS ---
-st.sidebar.header("Configurações da Área")
-area_total = st.sidebar.number_input("Área Total (ha)", value=60.0)
-taxa_aplicacao = st.sidebar.number_input("Taxa de Aplicação (L/ha)", value=12.0)
-capacidade_tanque = st.sidebar.number_input("Capacidade do Misturador (L)", value=200.0)
+# CONFIGURAÇÕES DA ÁREA
+with st.sidebar:
+    st.header("⚙️ Configurações")
+    area_total = st.number_input("Área Total (ha)", value=60.0)
+    taxa_aplicacao = st.number_input("Taxa de Aplicação (L/ha)", value=12.0)
+    misturador_cap = st.number_input("Capacidade do Misturador (L)", value=200.0)
+    
+    st.header("🧪 Produtos e Doses")
+    num_produtos = st.slider("Quantos produtos na mistura?", 1, 8, 5)
+    
+    produtos = []
+    for i in range(num_produtos):
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            nome = st.text_input(f"Produto {i+1}", f"Prod {i+1}")
+        with col2:
+            dose = st.number_input(f"Dose", key=f"d{i}", value=1.0, format="%.3f")
+        with col3:
+            unidade = st.selectbox("Un.", ["L", "ml"], key=f"u{i}")
+        produtos.append({"nome": nome, "dose": dose, "unidade": unidade})
 
-st.sidebar.header("Produtos e Doses (por ha)")
-# Doses padrão baseadas na nossa conversa
-dose_fulltec = st.sidebar.number_input("Fulltec Max (ml/ha)", value=50.0)
-dose_nutrol = st.sidebar.number_input("Nutrol Max (ml/ha)", value=150.0)
-dose_bim = st.sidebar.number_input("Bim Max (L/ha)", value=1.2)
-dose_shenzi = st.sidebar.number_input("Shenzi (ml/ha)", value=80.0)
-dose_aproach = st.sidebar.number_input("Aproach Power (ml/ha)", value=600.0)
-
-# --- CÁLCULOS LOGÍSTICOS ---
+# CÁLCULOS
 volume_total_calda = area_total * taxa_aplicacao
-num_batidas_cheias = math.floor(volume_total_calda / capacidade_tanque)
-volume_restante = volume_total_calda % capacidade_tanque
+num_batidas_cheias = math.floor(volume_total_calda / misturador_cap)
+volume_restante = volume_total_calda % misturador_cap
 
-# --- FUNÇÃO DE CÁLCULO DE PRODUTOS ---
-def calcular_produtos(volume_batida):
-    ha_por_batida = volume_batida / taxa_aplicacao
-    return {
-        "Fulltec Max": f"{(dose_fulltec * ha_por_batida):.2f} ml",
-        "Nutrol Max": f"{(dose_nutrol * ha_por_batida):.2f} ml",
-        "Bim Max": f"{(dose_bim * ha_por_batida):.2f} L",
-        "Shenzi": f"{(dose_shenzi * ha_por_batida):.2f} ml",
-        "Aproach Power": f"{(dose_aproach * ha_por_batida):.2f} ml"
-    }
+# EXIBIÇÃO
+st.subheader("📊 Planejamento")
+c1, c2, c3 = st.columns(3)
+c1.metric("Volume Total", f"{volume_total_calda} L")
+c2.metric(f"Batidas de {int(misturador_cap)}L", int(num_batidas_cheias))
+c3.metric("Batida Final", f"{volume_restante} L")
 
-# --- EXIBIÇÃO DOS RESULTADOS ---
-st.subheader("📊 Resumo da Operação")
-col1, col2, col3 = st.columns(3)
-col1.metric("Volume Total", f"{volume_total_calda} L")
-col2.metric("Batidas de {int(capacidade_tanque)}L", int(num_batidas_cheias))
-col3.metric("Batida Final", f"{volume_restante} L")
+def gerar_tabela(volume_batida):
+    ha_batida = volume_batida / taxa_aplicacao
+    lista_final = []
+    for p in produtos:
+        valor = p['dose'] * ha_batida
+        # Ajuste de unidade para visualização
+        txt_valor = f"{valor:.2f} {p['unidade']}"
+        lista_final.append({"Ordem": produtos.index(p)+1, "Produto": p['nome'], "Qtd por Batida": txt_valor})
+    return pd.DataFrame(lista_final)
 
-# Tabela para as batidas cheias
 if num_batidas_cheias > 0:
-    st.write(f"### 📋 Dosagem: Batidas de {capacidade_tanque}L")
-    prod_cheios = calcular_produtos(capacidade_tanque)
-    df_cheio = pd.DataFrame(list(prod_cheios.items()), columns=["Produto", "Quantidade por Batida"])
-    st.table(df_cheio)
+    st.write(f"### ✅ Batidas de {misturador_cap} Litros")
+    st.table(gerar_tabela(misturador_cap))
 
-# Tabela para a batida de sobra
 if volume_restante > 0:
-    st.write(f"### 📋 Dosagem: Última Batida ({volume_restante}L)")
-    prod_sobra = calcular_produtos(volume_restante)
-    df_sobra = pd.DataFrame(list(prod_sobra.items()), columns=["Produto", "Quantidade por Batida"])
-    st.table(df_sobra)
+    st.write(f"### ⚠️ Última Batida ({volume_restante} Litros)")
+    st.table(gerar_tabela(volume_restante))
 
-st.markdown("---")
-st.warning("⚠️ **Ordem de Mistura:** 1. Água (60%) > 2. Fulltec > 3. Nutrol > 4. Bim Max > 5. Shenzi > 6. Aproach > 7. Completar Água.")
+st.info("💡 Dica: Mantenha o agitador ligado e siga a ordem de mistura da calda conforme a formulação (WG > SC > EC).")
