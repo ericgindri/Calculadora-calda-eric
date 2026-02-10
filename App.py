@@ -4,35 +4,45 @@ import math
 import urllib.parse
 import json
 
+# Configuração da página para melhor leitura no campo
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
-# --- BANCO DE DADOS TÉCNICO (Doses Oficiais de Bula) ---
+# CSS para aumentar o tamanho da fonte das tabelas
+st.markdown("""
+    <style>
+    .stTable { font-size: 20px !family: sans-serif; }
+    div[data-testid="stExpander"] { font-size: 18px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- BANCO DE DADOS TÉCNICO ---
 DB_PRODUTOS = {
-    "Bim Max": {"dose_bula": "1,0 a 1,2 L/ha", "un": "L", "form": "SC / FS (Suspensão)"},
-    "Aproach Power": {"dose_bula": "0,4 a 0,6 L/ha", "un": "L", "form": "SC / FS (Suspensão)"},
-    "Shenzi": {"dose_bula": "80 a 100 ml/ha", "un": "ml", "form": "SC / FS (Suspensão)"},
-    "Fulltec Max": {"dose_bula": "50 ml/ha", "un": "ml", "form": "Condicionador (Adjuvante)"},
-    "Nutrol Max": {"dose_bula": "100 a 200 ml/ha", "un": "ml", "form": "Condicionador (Adjuvante)"},
-    "Engeo Pleno S": {"dose_bula": "150 a 250 ml/ha", "un": "ml", "form": "ZC (Suspensão Encapsulada)"},
-    "Unanime": {"dose_bula": "0,75 a 1,5 L/ha", "un": "L", "form": "SL (Líquido Solúvel)"},
-    "Crucial": {"dose_bula": "2,0 a 4,0 L/ha", "un": "L", "form": "SL (Líquido Solúvel)"},
-    "Expedition": {"dose_bula": "150 a 300 ml/ha", "un": "ml", "form": "SC / FS (Suspensão)"},
+    "Bim Max": {"dose_bula": "1,0 a 1,2 L/ha", "un": "L", "form": "SC (Suspensão)"},
+    "Aproach Power": {"dose_bula": "0,4 a 0,6 L/ha", "un": "L", "form": "SC (Suspensão)"},
+    "Shenzi": {"dose_bula": "80 a 100 ml/ha", "un": "ml", "form": "SC (Suspensão)"},
+    "Fulltec Max": {"dose_bula": "50 ml/ha", "un": "ml", "form": "Adjuvante"},
+    "Nutrol Max": {"dose_bula": "100 a 200 ml/ha", "un": "ml", "form": "Adjuvante"},
+    "Engeo Pleno S": {"dose_bula": "150 a 250 ml/ha", "un": "ml", "form": "ZC (Encapsulada)"},
+    "Unanime": {"dose_bula": "0,75 a 1,5 L/ha", "un": "L", "form": "SL (Líquido)"},
+    "Crucial": {"dose_bula": "2,0 a 4,0 L/ha", "un": "L", "form": "SL (Líquido)"},
+    "Expedition": {"dose_bula": "150 a 300 ml/ha", "un": "ml", "form": "SC (Suspensão)"},
     "PingBR (Ouro Fino)": {"dose_bula": "0,75 a 1,5 L/ha", "un": "L", "form": "EC (Emulsão)"},
-    "Joint Ultra": {"dose_bula": "0,4 a 0,6 L/ha", "un": "L", "form": "SC / FS (Suspensão)"},
-    "Evolution": {"dose_bula": "1,5 a 2,5 kg/ha", "un": "kg", "form": "WG / DF (Grânulos)"},
+    "Joint Ultra": {"dose_bula": "0,4 a 0,6 L/ha", "un": "L", "form": "SC (Suspensão)"},
+    "Evolution": {"dose_bula": "1,5 a 2,5 kg/ha", "un": "kg", "form": "WG (Grânulos)"},
     "Blindado (Adama)": {"dose_bula": "0,5 a 1,0 L/ha", "un": "L", "form": "EC (Emulsão)"},
-    "Fox Xpro": {"dose_bula": "0,4 a 0,5 L/ha", "un": "L", "form": "SC / FS (Suspensão)"},
-    "Kifix": {"dose_bula": "140 g/ha", "un": "g", "form": "WG / DF (Grânulos)"},
+    "Fox Xpro": {"dose_bula": "0,4 a 0,5 L/ha", "un": "L", "form": "SC (Suspensão)"},
+    "Kifix": {"dose_bula": "140 g/ha", "un": "g", "form": "WG (Grânulos)"},
     "Select": {"dose_bula": "0,4 a 0,5 L/ha", "un": "L", "form": "EC (Emulsão)"},
-    "Outro (Novo)": {"dose_bula": "Consulte a Bula", "un": "L", "form": "SL (Líquido Solúvel)"}
+    "Outro (Novo)": {"dose_bula": "Consulte Bula", "un": "L", "form": "SL (Líquido)"}
 }
 
 ORDEM_TECNICA = {
-    "Condicionador (Adjuvante)": 1, "WG / DF (Grânulos)": 2, "WP (Pó Molhável)": 3,
-    "SC / FS (Suspensão)": 4, "ZC (Suspensão Encapsulada)": 4, "EC (Emulsão)": 5, "SL (Líquido Solúvel)": 6
+    "Adjuvante": 1, "WG (Grânulos)": 2, "SC (Suspensão)": 3, 
+    "ZC (Encapsulada)": 3, "EC (Emulsão)": 4, "SL (Líquido)": 5
 }
 
 st.title("🚜 Central de Mistura Eric")
+st.markdown("---")
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -47,26 +57,23 @@ with st.sidebar:
     
     escolhidos = []
     for i in range(n_prod):
-        st.markdown(f"---")
-        p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), key=f"sel_{i}")
+        st.markdown(f"**Produto {i+1}**")
+        p_ref = st.selectbox(f"Selecionar", list(DB_PRODUTOS.keys()), key=f"sel_{i}")
         dados_p = DB_PRODUTOS[p_ref]
         
-        # CAMPO NOVO: Exibe a dose recomendada seguindo a bula
-        st.info(f"📖 **Bula:** {dados_p['dose_bula']}")
+        # Dose recomendada apenas na lateral para consulta
+        st.caption(f"📖 Bula: {dados_p['dose_bula']}")
         
-        nome = st.text_input("Nome", value=p_ref, key=f"n_{i}") if p_ref == "Outro (Novo)" else p_ref
+        nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Nome", key=f"n_{i}")
         
-        c1, col_v = st.columns([1,1])
-        # Aqui você insere a dose que VAI usar no dia
-        minha_dose = c1.number_input("Sua Dose/ha", value=0.0, key=f"d_{i}", format="%.3f")
+        c1, c2 = st.columns(2)
+        dose = c1.number_input("Dose/ha", value=0.0, key=f"d_{i}", format="%.3f")
+        un = c2.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(dados_p["un"]), key=f"u_{i}")
         
-        c_un, c_tipo = st.columns(2)
-        un = c_un.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(dados_p["un"]), key=f"u_{i}")
-        form = c_tipo.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(dados_p["form"]), key=f"f_{i}_{p_ref}")
+        form = st.selectbox("Formulação", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(dados_p["form"]), key=f"f_{i}_{p_ref}")
         
-        # Link mantido conforme solicitado
         link = f"https://www.google.com.br/search?q=site%3Aagrolink.com.br%2Fagrolinkfito+{nome.replace(' ', '+')}"
-        escolhidos.append({"nome": nome, "dose": minha_dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link, "bula_info": dados_p['dose_bula']})
+        escolhidos.append({"nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
 # --- PROCESSAMENTO ---
 vol_total = area * taxa
@@ -75,16 +82,25 @@ sobra = vol_total % tanque
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
 # --- EXIBIÇÃO ---
-st.subheader(f"📝 Plano de Mistura: {fazenda}")
+st.subheader(f"📝 Plano: {fazenda}")
 c1, c2, c3 = st.columns(3)
-c1.metric("Calda Total", f"{vol_total} L"); c2.metric("Batidas Cheias", int(batidas)); c3.metric("Última Batida", f"{int(sobra)} L")
+c1.metric("Calda Total", f"{vol_total} L")
+c2.metric("Batidas Cheias", int(batidas))
+c3.metric("Sobrou p/ Final", f"{int(sobra)} L")
 
-if batidas > 0:
-    st.success(f"✅ **Batidas de {int(tanque)}L**")
-    df = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(tanque/taxa)):.2f} {p['un']}", "Ref. Bula": p['bula_info'], "Link": p['bula']} for i, p in enumerate(ordenados)])
-    st.dataframe(df, column_config={"Link": st.column_config.LinkColumn("Bula (Google)")}, hide_index=True)
+def exibir_tabela(volume, titulo, cor):
+    if volume > 0:
+        st.markdown(f"### {cor} {titulo} ({int(volume)}L)")
+        df = pd.DataFrame([
+            {
+                "Ordem": i+1, 
+                "Produto": p['nome'], 
+                "Formulação": p['form'],
+                "Qtd p/ Misturar": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}",
+                "Bula": p['bula']
+            } for i, p in enumerate(ordenados)
+        ])
+        st.dataframe(df, column_config={"Bula": st.column_config.LinkColumn("Bula")}, hide_index=True, use_container_width=True)
 
-if sobra > 0:
-    st.warning(f"⚠️ **Última Batida ({int(sobra)}L)**")
-    df_s = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(sobra/taxa)):.2f} {p['un']}", "Ref. Bula": p['bula_info'], "Link": p['bula']} for i, p in enumerate(ordenados)])
-    st.dataframe(df_s, column_config={"Link": st.column_config.LinkColumn("Bula (Google)")}, hide_index=True)
+exibir_tabela(tanque if batidas > 0 else 0, f"FAZER {int(batidas)} VEZES", "✅")
+exibir_tabela(sobra, "ÚLTIMA BATIDA (FINAL)", "⚠️")
