@@ -2,16 +2,15 @@ import streamlit as st
 import pandas as pd
 import math
 import urllib.parse
-import json
 
-# Configuração da página para melhor leitura no campo
+# Configuração visual para facilitar a leitura no campo em São Francisco de Assis
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
-# CSS para aumentar o tamanho da fonte das tabelas
 st.markdown("""
     <style>
-    .stTable { font-size: 20px !family: sans-serif; }
+    .stTable { font-size: 22px !important; }
     div[data-testid="stExpander"] { font-size: 18px; }
+    .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -60,16 +59,11 @@ with st.sidebar:
         st.markdown(f"**Produto {i+1}**")
         p_ref = st.selectbox(f"Selecionar", list(DB_PRODUTOS.keys()), key=f"sel_{i}")
         dados_p = DB_PRODUTOS[p_ref]
-        
-        # Dose recomendada apenas na lateral para consulta
         st.caption(f"📖 Bula: {dados_p['dose_bula']}")
         
         nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Nome", key=f"n_{i}")
-        
-        c1, c2 = st.columns(2)
-        dose = c1.number_input("Dose/ha", value=0.0, key=f"d_{i}", format="%.3f")
-        un = c2.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(dados_p["un"]), key=f"u_{i}")
-        
+        dose = st.number_input("Dose/ha", value=0.0, key=f"d_{i}", format="%.3f")
+        un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(dados_p["un"]), key=f"u_{i}")
         form = st.selectbox("Formulação", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(dados_p["form"]), key=f"f_{i}_{p_ref}")
         
         link = f"https://www.google.com.br/search?q=site%3Aagrolink.com.br%2Fagrolinkfito+{nome.replace(' ', '+')}"
@@ -81,26 +75,41 @@ batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
+# --- FUNÇÃO WHATSAPP ---
+def gerar_link_whatsapp(volume, label):
+    ha = volume / taxa
+    texto = f"*🚜 PLANO DE MISTURA - ERIC*\n"
+    texto += f"*📍 {fazenda.upper()} - {label}*\n"
+    texto += f"💧 Água: {int(volume)} Litros\n"
+    texto += f"----------------------------\n"
+    for i, p in enumerate(ordenados):
+        qtd = p['dose'] * ha
+        texto += f"{i+1}º {p['nome']} ({p['form']}): *{qtd:.2f} {p['un']}*\n"
+    texto += f"----------------------------\n"
+    texto += "⚠️ _Mantenha a agitação constante!_"
+    return f"https://wa.me/?text={urllib.parse.quote(texto)}"
+
 # --- EXIBIÇÃO ---
-st.subheader(f"📝 Plano: {fazenda}")
+st.subheader(f"📝 Plano de Trabalho: {fazenda}")
 c1, c2, c3 = st.columns(3)
 c1.metric("Calda Total", f"{vol_total} L")
 c2.metric("Batidas Cheias", int(batidas))
 c3.metric("Sobrou p/ Final", f"{int(sobra)} L")
 
-def exibir_tabela(volume, titulo, cor):
+def exibir_tabela(volume, titulo, emoji):
     if volume > 0:
-        st.markdown(f"### {cor} {titulo} ({int(volume)}L)")
+        st.markdown(f"### {emoji} {titulo} ({int(volume)}L)")
         df = pd.DataFrame([
             {
                 "Ordem": i+1, 
                 "Produto": p['nome'], 
-                "Formulação": p['form'],
-                "Qtd p/ Misturar": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}",
-                "Bula": p['bula']
+                "Tipo": p['form'],
+                "Quantidade": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}",
+                "🔗": p['bula']
             } for i, p in enumerate(ordenados)
         ])
-        st.dataframe(df, column_config={"Bula": st.column_config.LinkColumn("Bula")}, hide_index=True, use_container_width=True)
+        st.dataframe(df, column_config={"🔗": st.column_config.LinkColumn(width="small")}, hide_index=True, use_container_width=True)
+        st.link_button(f"📲 Enviar {titulo} via WhatsApp", gerar_link_whatsapp(volume, titulo))
 
 exibir_tabela(tanque if batidas > 0 else 0, f"FAZER {int(batidas)} VEZES", "✅")
 exibir_tabela(sobra, "ÚLTIMA BATIDA (FINAL)", "⚠️")
