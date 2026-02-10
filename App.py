@@ -4,7 +4,7 @@ import math
 import urllib.parse
 import json
 
-# Configuração para facilitar a leitura no campo e no notebook Samsung
+# Configuração para facilitar a leitura no campo
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
 st.markdown("""
@@ -15,7 +15,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- BANCO DE DADOS TÉCNICO ---
+# --- BANCO DE DATOS TÉCNICO ---
 DB_PRODUTOS = {
     "- Selecionar -": {"dose_bula": "", "un": "L", "form": "Adjuvante"},
     "Bim Max": {"dose_bula": "1,0 a 1,2 L/ha", "un": "L", "form": "SC (Suspensão)"},
@@ -50,69 +50,85 @@ def limpar_campos():
 st.title("🚜 Central de Mistura Eric")
 st.markdown("---")
 
-# --- CARREGAMENTO DE ARQUIVO ---
+# --- LÓGICA DE CARREGAMENTO ROBUSTA ---
 with st.expander("💾 Salvar ou Carregar Receitas"):
     col_save, col_load = st.columns(2)
     with col_load:
-        uploaded_file = st.file_uploader("Carregar arquivo de receita (.json)", type="json")
-        loaded_data = json.load(uploaded_file) if uploaded_file else None
+        uploaded_file = st.file_uploader("Subir arquivo de receita (.json)", type="json")
+        if uploaded_file:
+            data = json.load(uploaded_file)
+            # Injeta os dados na sessão do Streamlit
+            st.session_state['fazenda'] = data.get('fazenda', 'Geral')
+            st.session_state['area_total'] = data.get('area', 60.0)
+            st.session_state['taxa'] = data.get('taxa', 12.0)
+            st.session_state['tanque'] = data.get('tanque', 200.0)
+            st.session_state['n_prod_slider'] = len(data.get('produtos', []))
+            # Salva os produtos para preenchimento posterior
+            st.session_state['produtos_salvos'] = data.get('produtos', [])
+            st.success("Dados carregados! Ajuste o slider se necessário.")
 
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.header("📋 Operação")
     st.button("🗑️ Limpar Tudo", on_click=limpar_campos, type="primary")
     
-    fazenda = st.text_input("Fazenda / Talhão", value=loaded_data['fazenda'] if loaded_data else "Geral")
-    area_total = st.number_input("Área Total (ha)", value=loaded_data['area'] if loaded_data else 60.0)
-    taxa = st.number_input("Taxa (L/ha)", value=loaded_data['taxa'] if loaded_data else 12.0)
-    tanque = st.number_input("Misturador (L)", value=loaded_data['tanque'] if loaded_data else 200.0)
+    fazenda = st.text_input("Fazenda / Talhão", value=st.session_state.get('fazenda', 'Geral'), key='fazenda_input')
+    area_total = st.number_input("Área Total (ha)", value=st.session_state.get('area_total', 60.0), key='area_input')
+    taxa = st.number_input("Taxa (L/ha)", value=st.session_state.get('taxa', 12.0), key='taxa_input')
+    tanque = st.number_input("Misturador (L)", value=st.session_state.get('tanque', 200.0), key='tanque_input')
     
     st.header("🧪 Calda")
-    # Ajuste automático do slider para o número de produtos carregados
-    num_salvo = len(loaded_data['produtos']) if loaded_data else 5
-    n_prod = st.slider("Quantidade de Produtos", 1, 15, num_salvo)
+    n_prod = st.slider("Quantidade de Produtos", 1, 15, value=st.session_state.get('n_prod_slider', 5), key='n_prod_slider')
     
     escolhidos = []
+    produtos_salvos = st.session_state.get('produtos_salvos', [])
+
     for i in range(n_prod):
         st.markdown(f"---")
         
-        # Lógica de carregamento individual por produto
-        item_salvo = loaded_data['produtos'][i] if loaded_data and i < len(loaded_data['produtos']) else None
-        p_ref_salvo = item_salvo['p_ref'] if item_salvo else "- Selecionar -"
-        
-        # Garante que o produto salvo existe no banco, senão volta para Selecionar
-        if p_ref_salvo not in DB_PRODUTOS: p_ref_salvo = "- Selecionar -"
+        # Recupera dados do produto salvo, se existir
+        salvo = produtos_salvos[i] if i < len(produtos_salvos) else None
+        p_ref_default = salvo['p_ref'] if salvo and salvo['p_ref'] in DB_PRODUTOS else "- Selecionar -"
         
         p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), 
-                             index=list(DB_PRODUTOS.keys()).index(p_ref_salvo), key=f"sel_{i}")
-        
-        dados_p = DB_PRODUTOS[p_ref]
+                             index=list(DB_PRODUTOS.keys()).index(p_ref_default), key=f"sel_{i}")
         
         if p_ref != "- Selecionar -":
+            dados_p = DB_PRODUTOS[p_ref]
             st.caption(f"📖 Bula: {dados_p['dose_bula']}")
             
-            nome_val = item_salvo['nome'] if item_salvo else p_ref
-            nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Qual o nome?", value=nome_val, key=f"n_{i}")
+            nome_default = salvo['nome'] if salvo else p_ref
+            nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Nome", value=nome_default, key=f"n_{i}")
             
-            dose_val = float(item_salvo['dose']) if item_salvo else 0.0
-            dose = st.number_input("Dose/ha", value=dose_val, key=f"d_{i}", format="%.3f")
+            dose_default = float(salvo['dose']) if salvo else 0.0
+            dose = st.number_input("Dose/ha", value=dose_default, key=f"d_{i}", format="%.3f")
             
-            un_val = item_salvo['un'] if item_salvo else dados_p["un"]
-            un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(un_val), key=f"u_{i}")
+            un_default = salvo['un'] if salvo else dados_p["un"]
+            un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(un_default), key=f"u_{i}")
             
-            form_val = item_salvo['form'] if item_salvo else dados_p["form"]
-            form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(form_val), key=f"f_{i}_{p_ref}")
+            form_default = salvo['form'] if salvo else dados_p["form"]
+            form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(form_default), key=f"f_{i}_{p_ref}")
             
             link = f"https://www.google.com/search?q=site:agrolink.com.br/agrolinkfito+{nome.replace(' ', '+')}"
             escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
-# --- PROCESSAMENTO ---
+# --- PROCESSAMENTO E TOTAIS ---
 vol_total = area_total * taxa
 batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
 area_por_batida = tanque / taxa
 area_sobra = sobra / taxa
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
+
+# Função para resumo de insumos totais
+def exibir_totais():
+    if escolhidos:
+        st.markdown("### 📦 Total de Insumos para a Área")
+        totais = []
+        for p in escolhidos:
+            total_area = p['dose'] * area_total
+            totais.append({"Produto": p['nome'], "Total Necessário": f"{total_area:.2f} {p['un']}"})
+        st.table(totais)
 
 with col_save:
     receita_json = json.dumps({"fazenda": fazenda, "area": area_total, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}, indent=4)
@@ -134,6 +150,8 @@ c3.metric("Área/Batida", f"{area_por_batida:.2f} ha")
 c4.metric("Batida Final", f"{int(sobra)} L")
 
 if ordenados:
+    exibir_totais() # Exibe quanto de cada veneno você precisa comprar/pegar no galpão
+    
     if batidas > 0:
         st.success(f"✅ **BATIDA CHEIA ({int(tanque)}L) - Cobre {area_por_batida:.2f} ha**")
         df = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Tipo": p['form'], "Dose/ha": f"{p['dose']} {p['un']}", "Misturar": f"{(p['dose']*(tanque/taxa)):.2f} {p['un']}", "🔗": p['bula']} for i, p in enumerate(ordenados)])
@@ -145,5 +163,3 @@ if ordenados:
         df_s = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Tipo": p['form'], "Dose/ha": f"{p['dose']} {p['un']}", "Misturar": f"{(p['dose']*(sobra/taxa)):.2f} {p['un']}", "🔗": p['bula']} for i, p in enumerate(ordenados)])
         st.dataframe(df_s, column_config={"🔗": st.column_config.LinkColumn(width="small")}, hide_index=True, use_container_width=True)
         st.link_button(f"📲 WhatsApp: Batida Final", gerar_zap(sobra, "FINAL", area_sobra))
-else:
-    st.info("💡 Carregue uma receita ou selecione os produtos na barra lateral.")
