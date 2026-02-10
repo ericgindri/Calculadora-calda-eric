@@ -4,7 +4,7 @@ import math
 import urllib.parse
 import json
 
-st.set_page_config(page_title="Eric Agro - Sistema de Receitas", page_icon="🚜", layout="wide")
+st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
 # --- BANCO DE DADOS TÉCNICO ---
 DB_PRODUTOS = {
@@ -33,19 +33,19 @@ ORDEM_TECNICA = {
     "SC / FS (Suspensão)": 4, "ZC (Suspensão Encapsulada)": 4, "EC (Emulsão)": 5, "SL (Líquido Solúvel)": 6
 }
 
-st.title("🚜 Central de Mistura Eric - Gestão de Receitas")
+st.title("🚜 Central de Mistura Eric")
 
-# --- SISTEMA DE CARREGAMENTO ---
+# --- SISTEMA DE RECEITAS ---
 with st.expander("💾 Salvar ou Carregar Receitas"):
     col_save, col_load = st.columns(2)
     with col_load:
         uploaded_file = st.file_uploader("Carregar arquivo de receita (.json)", type="json")
         loaded_data = json.load(uploaded_file) if uploaded_file else None
 
-# --- CONFIGURAÇÕES NA LATERAL ---
+# --- BARRA LATERAL ---
 with st.sidebar:
     st.header("📋 Operação")
-    # Se carregou arquivo, usa o valor dele, senão usa o padrão
+    fazenda = st.text_input("Fazenda / Talhão", value=loaded_data['fazenda'] if loaded_data else "Geral")
     area = st.number_input("Área Total (ha)", value=loaded_data['area'] if loaded_data else 60.0)
     taxa = st.number_input("Taxa (L/ha)", value=loaded_data['taxa'] if loaded_data else 12.0)
     tanque = st.number_input("Misturador (L)", value=loaded_data['tanque'] if loaded_data else 200.0)
@@ -55,29 +55,33 @@ with st.sidebar:
     
     escolhidos = []
     for i in range(n_prod):
-        st.markdown(f"**Item {i+1}**")
-        # Tenta pegar o produto da receita carregada
-        p_default = loaded_data['produtos'][i]['p_ref'] if loaded_data and i < len(loaded_data['produtos']) else "Bim Max"
-        p_ref = st.selectbox(f"Produto", list(DB_PRODUTOS.keys()), index=list(DB_PRODUTOS.keys()).index(p_ref_val := p_default if p_default in DB_PRODUTOS else "Outro (Novo)"), key=f"sel_{i}")
+        st.markdown(f"---")
+        p_def = loaded_data['produtos'][i]['p_ref'] if loaded_data and i < len(loaded_data['produtos']) else "Bim Max"
+        p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), index=list(DB_PRODUTOS.keys()).index(p_ref_val := p_def if p_def in DB_PRODUTOS else "Outro (Novo)"), key=f"sel_{i}")
         
         dados_p = DB_PRODUTOS[p_ref]
-        nome = st.text_input("Nome", value=loaded_data['produtos'][i]['nome'] if loaded_data and i < len(loaded_data['produtos']) else p_ref, key=f"n_{i}")
         
-        c1, c2 = st.columns(2)
-        dose = c1.number_input("Dose", value=float(loaded_data['produtos'][i]['dose'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["dose"]), key=f"d_{i}")
-        un = c2.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(loaded_data['produtos'][i]['un'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["un"]), key=f"u_{i}")
+        if p_ref == "Outro (Novo)":
+            nome = st.text_input("Nome do Produto", value=loaded_data['produtos'][i]['nome'] if loaded_data and i < len(loaded_data['produtos']) else "Novo", key=f"n_{i}")
+        else:
+            nome = p_ref
         
-        form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(loaded_data['produtos'][i]['form'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["form"]), key=f"f_{i}_{p_ref}")
+        c1, col_vazio = st.columns([1, 1])
+        dose = c1.number_input("Dose/ha", value=float(loaded_data['produtos'][i]['dose'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["dose"]), key=f"d_{i}")
         
-        escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form]})
+        c_un, c_tipo = st.columns(2)
+        un = c_un.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(loaded_data['produtos'][i]['un'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["un"]), key=f"u_{i}")
+        form = c_tipo.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(loaded_data['produtos'][i]['form'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["form"]), key=f"f_{i}_{p_ref}")
+        
+        link = f"https://www.google.com.br/search?q=site%3Aagrolink.com.br%2Fagrolinkfito+{nome.replace(' ', '+')}"
+        escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
-# --- BOTÃO DE SALVAR (DENTRO DO EXPANDER) ---
+# --- BOTÃO DE SALVAR ---
 with col_save:
-    receita_atual = {"area": area, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}
-    json_receita = json.dumps(receita_atual, indent=4)
-    st.download_button(label="📥 Baixar Receita Atual", data=json_receita, file_name="receita_calda.json", mime="application/json")
+    receita_atual = {"fazenda": fazenda, "area": area, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}
+    st.download_button("📥 Baixar Receita (JSON)", json.dumps(receita_atual, indent=4), "receita_calda.json", "application/json")
 
-# --- CÁLCULOS E EXIBIÇÃO ---
+# --- CÁLCULOS ---
 vol_total = area * taxa
 batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
@@ -85,21 +89,24 @@ ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
 def preparar_zap(volume, tipo):
     ha = volume / taxa
-    msg = f"*📋 PLANO {tipo}*\n💧 Água: {int(volume)}L\n---\n"
+    msg = f"*📋 PLANO {tipo} - {fazenda.upper()}*\n💧 Água: {int(volume)}L\n---\n"
     for i, p in enumerate(ordenados):
         msg += f"{i+1}º - {p['nome']}: *{(p['dose']*ha):.2f} {p['un']}*\n"
     return f"https://wa.me/?text={urllib.parse.quote(msg)}"
 
-st.subheader("📝 Guia de Preparo")
+# --- EXIBIÇÃO ---
+st.subheader(f"📝 Guia de Preparo: {fazenda}")
 c1, c2, c3 = st.columns(3)
 c1.metric("Calda Total", f"{vol_total} L"); c2.metric("Batidas Cheias", int(batidas)); c3.metric("Última Batida", f"{int(sobra)} L")
 
 if batidas > 0:
     st.success(f"✅ **Batidas de {int(tanque)}L**")
-    st.table([{"#": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(tanque/taxa)):.2f} {p['un']}"} for i, p in enumerate(ordenados)])
-    st.link_button("📲 Zap: Batida Cheia", preparar_zap(tanque, "BATIDA CHEIA"))
+    df = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(tanque/taxa)):.2f} {p['un']}", "Bula": p['bula']} for i, p in enumerate(ordenados)])
+    st.dataframe(df, column_config={"Bula": st.column_config.LinkColumn("Bula")}, hide_index=True)
+    st.link_button("📲 Enviar via WhatsApp", preparar_zap(tanque, "BATIDA CHEIA"))
 
 if sobra > 0:
     st.warning(f"⚠️ **Batida Final ({int(sobra)}L)**")
-    st.table([{"#": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(sobra/taxa)):.2f} {p['un']}"} for i, p in enumerate(ordenados)])
-    st.link_button("📲 Zap: Batida Final", preparar_zap(sobra, "ÚLTIMA BATIDA"))
+    df_s = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(sobra/taxa)):.2f} {p['un']}", "Bula": p['bula']} for i, p in enumerate(ordenados)])
+    st.dataframe(df_s, column_config={"Bula": st.column_config.LinkColumn("Bula")}, hide_index=True)
+    st.link_button("📲 Enviar via WhatsApp (Final)", preparar_zap(sobra, f"ÚLTIMA BATIDA"))
