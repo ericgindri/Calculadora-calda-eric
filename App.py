@@ -4,7 +4,7 @@ import math
 import urllib.parse
 import json
 
-# Configuração visual para o campo
+# Configuração visual para o campo e para o Samsung Book
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
 st.markdown("""
@@ -15,8 +15,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- BANCO DE DADOS TÉCNICO ---
+# --- BANCO DE DADOS TÉCNICO (Adicionado Opção Vazia) ---
 DB_PRODUTOS = {
+    "- Selecionar -": {"dose_bula": "", "un": "L", "form": "Adjuvante"},
     "Bim Max": {"dose_bula": "1,0 a 1,2 L/ha", "un": "L", "form": "SC (Suspensão)"},
     "Aproach Power": {"dose_bula": "0,4 a 0,6 L/ha", "un": "L", "form": "SC (Suspensão)"},
     "Shenzi": {"dose_bula": "80 a 100 ml/ha", "un": "ml", "form": "SC (Suspensão)"},
@@ -41,10 +42,7 @@ ORDEM_TECNICA = {
     "ZC (Encapsulada)": 3, "EC (Emulsão)": 4, "SL (Líquido)": 5
 }
 
-# --- FUNÇÃO PARA LIMPAR CAMPOS ---
-if 'limpar' not in st.session_state:
-    st.session_state.limpar = False
-
+# --- FUNÇÃO LIMPAR ---
 def limpar_campos():
     for key in st.session_state.keys():
         del st.session_state[key]
@@ -61,8 +59,7 @@ with st.expander("💾 Salvar ou Carregar Receitas"):
 
 with st.sidebar:
     st.header("📋 Operação")
-    if st.button("🗑️ Limpar Todos os Campos", on_click=limpar_campos):
-        st.success("Campos limpos!")
+    st.button("🗑️ Limpar Tudo", on_click=limpar_campos, type="primary")
     
     fazenda = st.text_input("Fazenda / Talhão", value=loaded_data['fazenda'] if loaded_data else "Geral")
     area_total = st.number_input("Área Total (ha)", value=loaded_data['area'] if loaded_data else 60.0)
@@ -75,20 +72,23 @@ with st.sidebar:
     escolhidos = []
     for i in range(n_prod):
         st.markdown(f"---")
-        p_def = loaded_data['produtos'][i]['p_ref'] if loaded_data and i < len(loaded_data['produtos']) else "Bim Max"
-        p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), index=list(DB_PRODUTOS.keys()).index(p_ref if (p_ref := p_def) in DB_PRODUTOS else "Bim Max"), key=f"sel_{i}")
+        # Define o padrão como "- Selecionar -" se não houver arquivo carregado
+        p_def = loaded_data['produtos'][i]['p_ref'] if loaded_data and i < len(loaded_data['produtos']) else "- Selecionar -"
+        p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), index=list(DB_PRODUTOS.keys()).index(p_ref if (p_ref := p_def) in DB_PRODUTOS else "- Selecionar -"), key=f"sel_{i}")
+        
         dados_p = DB_PRODUTOS[p_ref]
-        st.caption(f"📖 Bula: {dados_p['dose_bula']}")
         
-        nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Nome", value=loaded_data['produtos'][i]['nome'] if loaded_data and i < len(loaded_data['produtos']) else "Novo", key=f"n_{i}")
-        dose = st.number_input("Dose/ha", value=float(loaded_data['produtos'][i]['dose'] if loaded_data and i < len(loaded_data['produtos']) else 0.0), key=f"d_{i}", format="%.3f")
-        un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(loaded_data['produtos'][i]['un'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["un"]), key=f"u_{i}")
-        form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(loaded_data['produtos'][i]['form'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["form"]), key=f"f_{i}_{p_ref}")
-        
-        link = f"https://www.google.com/search?q=site:agrolink.com.br/agrolinkfito+{nome.replace(' ', '+')}"
-        escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
+        # Só processa se um produto real for escolhido
+        if p_ref != "- Selecionar -":
+            st.caption(f"📖 Bula: {dados_p['dose_bula']}")
+            nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Nome", value=loaded_data['produtos'][i]['nome'] if loaded_data and i < len(loaded_data['produtos']) else "Novo", key=f"n_{i}")
+            dose = st.number_input("Dose/ha", value=float(loaded_data['produtos'][i]['dose'] if loaded_data and i < len(loaded_data['produtos']) else 0.0), key=f"d_{i}", format="%.3f")
+            un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(loaded_data['produtos'][i]['un'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["un"]), key=f"u_{i}")
+            form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(loaded_data['produtos'][i]['form'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["form"]), key=f"f_{i}_{p_ref}")
+            link = f"https://www.google.com/search?q=site:agrolink.com.br/agrolinkfito+{nome.replace(' ', '+')}"
+            escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
-# --- PROCESSAMENTO ---
+# --- CÁLCULOS ---
 vol_total = area_total * taxa
 batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
@@ -97,33 +97,34 @@ area_sobra = sobra / taxa
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
 with col_save:
-    st.download_button("📥 Baixar Receita (JSON)", json.dumps({"fazenda": fazenda, "area": area_total, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}, indent=4), f"receita_{fazenda}.json", "application/json")
+    st.download_button("📥 Salvar JSON", json.dumps({"fazenda": fazenda, "area": area_total, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}, indent=4), f"receita_{fazenda}.json", "application/json")
 
-# --- WHATSAPP ---
-def gerar_zap(volume, tipo, area_coberta):
+def gerar_zap(volume, tipo, area_c):
     ha = volume / taxa
-    texto = f"*🚜 PLANO ERIC - {fazenda.upper()}*\n"
-    texto += f"💧 Água: {int(volume)}L ({tipo})\n"
-    texto += f"📍 Cobertura desta batida: *{area_coberta:.2f} ha*\n"
-    texto += "----------------------------\n"
+    texto = f"*🚜 PLANO ERIC - {fazenda.upper()}*\n💧 Água: {int(volume)}L ({tipo})\n📍 Cobertura: *{area_c:.2f} ha*\n---\n"
     for i, p in enumerate(ordenados):
         texto += f"{i+1}º {p['nome']} ({p['form']}): *{(p['dose']*ha):.2f} {p['un']}*\n"
     return f"https://wa.me/?text={urllib.parse.quote(texto)}"
 
 # --- EXIBIÇÃO ---
-st.subheader(f"📝 Plano de Trabalho: {fazenda}")
+st.subheader(f"📝 Plano: {fazenda}")
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Calda Total", f"{vol_total} L")
-c2.metric("Batidas Cheias", int(batidas))
+c2.metric("Batidas 200L", int(batidas))
 c3.metric("Área/Batida", f"{area_por_batida:.2f} ha")
 c4.metric("Batida Final", f"{int(sobra)} L")
 
-def exibir_tabela(volume, titulo, emoji, area_c):
-    if volume > 0:
-        st.markdown(f"### {emoji} {titulo} ({int(volume)}L) - Cobre {area_c:.2f} ha")
-        df = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Tipo": p['form'], "Dose/ha": f"{p['dose']} {p['un']}", "Qtd p/ Misturar": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}", "🔗": p['bula']} for i, p in enumerate(ordenados)])
+if ordenados:
+    if batidas > 0:
+        st.success(f"✅ **BATIDA CHEIA ({int(tanque)}L) - Cobre {area_por_batida:.2f} ha**")
+        df = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Tipo": p['form'], "Dose/ha": f"{p['dose']} {p['un']}", "Misturar": f"{(p['dose']*(tanque/taxa)):.2f} {p['un']}", "🔗": p['bula']} for i, p in enumerate(ordenados)])
         st.dataframe(df, column_config={"🔗": st.column_config.LinkColumn(width="small")}, hide_index=True, use_container_width=True)
-        st.link_button(f"📲 Enviar via WhatsApp", gerar_zap(volume, titulo, area_c))
+        st.link_button(f"📲 WhatsApp: Batida Cheia", gerar_zap(tanque, "CHEIA", area_por_batida))
 
-exibir_tabela(tanque if batidas > 0 else 0, "BATIDA CHEIA", "✅", area_por_batida)
-exibir_tabela(sobra, "BATIDA FINAL", "⚠️", area_sobra)
+    if sobra > 0:
+        st.warning(f"⚠️ **BATIDA FINAL ({int(sobra)}L) - Cobre {area_sobra:.2f} ha**")
+        df_s = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Tipo": p['form'], "Dose/ha": f"{p['dose']} {p['un']}", "Misturar": f"{(p['dose']*(sobra/taxa)):.2f} {p['un']}", "🔗": p['bula']} for i, p in enumerate(ordenados)])
+        st.dataframe(df_s, column_config={"🔗": st.column_config.LinkColumn(width="small")}, hide_index=True, use_container_width=True)
+        st.link_button(f"📲 WhatsApp: Batida Final", gerar_zap(sobra, "FINAL", area_sobra))
+else:
+    st.info("💡 Selecione os produtos na barra lateral para gerar o plano de mistura.")
