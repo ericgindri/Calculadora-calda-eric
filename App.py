@@ -4,10 +4,9 @@ import math
 import urllib.parse
 import json
 
-# Configuração para facilitar a leitura no campo e no notebook Samsung
+# Configuração visual para o campo
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
-# CSS para aumentar a fonte e destacar as informações sob o sol
 st.markdown("""
     <style>
     .stTable { font-size: 24px !important; }
@@ -42,21 +41,31 @@ ORDEM_TECNICA = {
     "ZC (Encapsulada)": 3, "EC (Emulsão)": 4, "SL (Líquido)": 5
 }
 
+# --- FUNÇÃO PARA LIMPAR CAMPOS ---
+if 'limpar' not in st.session_state:
+    st.session_state.limpar = False
+
+def limpar_campos():
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    st.rerun()
+
 st.title("🚜 Central de Mistura Eric")
 st.markdown("---")
 
-# --- SISTEMA DE CARREGAMENTO ---
 with st.expander("💾 Salvar ou Carregar Receitas"):
     col_save, col_load = st.columns(2)
     with col_load:
-        uploaded_file = st.file_uploader("Carregar arquivo de receita (.json)", type="json")
+        uploaded_file = st.file_uploader("Carregar JSON", type="json")
         loaded_data = json.load(uploaded_file) if uploaded_file else None
 
-# --- BARRA LATERAL ---
 with st.sidebar:
     st.header("📋 Operação")
+    if st.button("🗑️ Limpar Todos os Campos", on_click=limpar_campos):
+        st.success("Campos limpos!")
+    
     fazenda = st.text_input("Fazenda / Talhão", value=loaded_data['fazenda'] if loaded_data else "Geral")
-    area = st.number_input("Área Total (ha)", value=loaded_data['area'] if loaded_data else 60.0)
+    area_total = st.number_input("Área Total (ha)", value=loaded_data['area'] if loaded_data else 60.0)
     taxa = st.number_input("Taxa (L/ha)", value=loaded_data['taxa'] if loaded_data else 12.0)
     tanque = st.number_input("Misturador (L)", value=loaded_data['tanque'] if loaded_data else 200.0)
     
@@ -79,22 +88,23 @@ with st.sidebar:
         link = f"https://www.google.com/search?q=site:agrolink.com.br/agrolinkfito+{nome.replace(' ', '+')}"
         escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
-# --- BOTÃO DE SALVAR ---
-with col_save:
-    receita_atual = {"fazenda": fazenda, "area": area, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}
-    st.download_button("📥 Baixar Receita (JSON)", json.dumps(receita_atual, indent=4), f"receita_{fazenda}.json", "application/json")
-
 # --- PROCESSAMENTO ---
-vol_total = area * taxa
+vol_total = area_total * taxa
 batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
+area_por_batida = tanque / taxa
+area_sobra = sobra / taxa
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
+with col_save:
+    st.download_button("📥 Baixar Receita (JSON)", json.dumps({"fazenda": fazenda, "area": area_total, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}, indent=4), f"receita_{fazenda}.json", "application/json")
+
 # --- WHATSAPP ---
-def gerar_zap(volume, tipo):
+def gerar_zap(volume, tipo, area_coberta):
     ha = volume / taxa
     texto = f"*🚜 PLANO ERIC - {fazenda.upper()}*\n"
     texto += f"💧 Água: {int(volume)}L ({tipo})\n"
+    texto += f"📍 Cobertura desta batida: *{area_coberta:.2f} ha*\n"
     texto += "----------------------------\n"
     for i, p in enumerate(ordenados):
         texto += f"{i+1}º {p['nome']} ({p['form']}): *{(p['dose']*ha):.2f} {p['un']}*\n"
@@ -102,26 +112,18 @@ def gerar_zap(volume, tipo):
 
 # --- EXIBIÇÃO ---
 st.subheader(f"📝 Plano de Trabalho: {fazenda}")
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 c1.metric("Calda Total", f"{vol_total} L")
 c2.metric("Batidas Cheias", int(batidas))
-c3.metric("Última Batida", f"{int(sobra)} L")
+c3.metric("Área/Batida", f"{area_por_batida:.2f} ha")
+c4.metric("Batida Final", f"{int(sobra)} L")
 
-def exibir_tabela(volume, titulo, emoji):
+def exibir_tabela(volume, titulo, emoji, area_c):
     if volume > 0:
-        st.markdown(f"### {emoji} {titulo} ({int(volume)}L)")
-        df = pd.DataFrame([
-            {
-                "Ordem": i+1, 
-                "Produto": p['nome'], 
-                "Tipo": p['form'],
-                "Dose/ha": f"{p['dose']} {p['un']}",
-                "Qtd p/ Misturar": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}",
-                "🔗": p['bula']
-            } for i, p in enumerate(ordenados)
-        ])
+        st.markdown(f"### {emoji} {titulo} ({int(volume)}L) - Cobre {area_c:.2f} ha")
+        df = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Tipo": p['form'], "Dose/ha": f"{p['dose']} {p['un']}", "Qtd p/ Misturar": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}", "🔗": p['bula']} for i, p in enumerate(ordenados)])
         st.dataframe(df, column_config={"🔗": st.column_config.LinkColumn(width="small")}, hide_index=True, use_container_width=True)
-        st.link_button(f"📲 Enviar via WhatsApp", gerar_zap(volume, titulo))
+        st.link_button(f"📲 Enviar via WhatsApp", gerar_zap(volume, titulo, area_c))
 
-exibir_tabela(tanque if batidas > 0 else 0, "BATIDA CHEIA", "✅")
-exibir_tabela(sobra, "BATIDA FINAL", "⚠️")
+exibir_tabela(tanque if batidas > 0 else 0, "BATIDA CHEIA", "✅", area_por_batida)
+exibir_tabela(sobra, "BATIDA FINAL", "⚠️", area_sobra)
