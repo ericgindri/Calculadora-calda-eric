@@ -4,7 +4,7 @@ import math
 import urllib.parse
 import json
 
-# Configuração visual para o campo e para o Samsung Book
+# Configuração para facilitar a leitura no campo e no notebook Samsung
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
 st.markdown("""
@@ -15,7 +15,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- BANCO DE DADOS TÉCNICO (Adicionado Opção Vazia) ---
+# --- BANCO DE DADOS TÉCNICO ---
 DB_PRODUTOS = {
     "- Selecionar -": {"dose_bula": "", "un": "L", "form": "Adjuvante"},
     "Bim Max": {"dose_bula": "1,0 a 1,2 L/ha", "un": "L", "form": "SC (Suspensão)"},
@@ -42,7 +42,6 @@ ORDEM_TECNICA = {
     "ZC (Encapsulada)": 3, "EC (Emulsão)": 4, "SL (Líquido)": 5
 }
 
-# --- FUNÇÃO LIMPAR ---
 def limpar_campos():
     for key in st.session_state.keys():
         del st.session_state[key]
@@ -51,12 +50,14 @@ def limpar_campos():
 st.title("🚜 Central de Mistura Eric")
 st.markdown("---")
 
+# --- CARREGAMENTO DE ARQUIVO ---
 with st.expander("💾 Salvar ou Carregar Receitas"):
     col_save, col_load = st.columns(2)
     with col_load:
-        uploaded_file = st.file_uploader("Carregar JSON", type="json")
+        uploaded_file = st.file_uploader("Carregar arquivo de receita (.json)", type="json")
         loaded_data = json.load(uploaded_file) if uploaded_file else None
 
+# --- BARRA LATERAL ---
 with st.sidebar:
     st.header("📋 Operação")
     st.button("🗑️ Limpar Tudo", on_click=limpar_campos, type="primary")
@@ -67,28 +68,45 @@ with st.sidebar:
     tanque = st.number_input("Misturador (L)", value=loaded_data['tanque'] if loaded_data else 200.0)
     
     st.header("🧪 Calda")
-    n_prod = st.slider("Produtos", 1, 10, len(loaded_data['produtos']) if loaded_data else 5)
+    # Ajuste automático do slider para o número de produtos carregados
+    num_salvo = len(loaded_data['produtos']) if loaded_data else 5
+    n_prod = st.slider("Quantidade de Produtos", 1, 15, num_salvo)
     
     escolhidos = []
     for i in range(n_prod):
         st.markdown(f"---")
-        # Define o padrão como "- Selecionar -" se não houver arquivo carregado
-        p_def = loaded_data['produtos'][i]['p_ref'] if loaded_data and i < len(loaded_data['produtos']) else "- Selecionar -"
-        p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), index=list(DB_PRODUTOS.keys()).index(p_ref if (p_ref := p_def) in DB_PRODUTOS else "- Selecionar -"), key=f"sel_{i}")
+        
+        # Lógica de carregamento individual por produto
+        item_salvo = loaded_data['produtos'][i] if loaded_data and i < len(loaded_data['produtos']) else None
+        p_ref_salvo = item_salvo['p_ref'] if item_salvo else "- Selecionar -"
+        
+        # Garante que o produto salvo existe no banco, senão volta para Selecionar
+        if p_ref_salvo not in DB_PRODUTOS: p_ref_salvo = "- Selecionar -"
+        
+        p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), 
+                             index=list(DB_PRODUTOS.keys()).index(p_ref_salvo), key=f"sel_{i}")
         
         dados_p = DB_PRODUTOS[p_ref]
         
-        # Só processa se um produto real for escolhido
         if p_ref != "- Selecionar -":
             st.caption(f"📖 Bula: {dados_p['dose_bula']}")
-            nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Nome", value=loaded_data['produtos'][i]['nome'] if loaded_data and i < len(loaded_data['produtos']) else "Novo", key=f"n_{i}")
-            dose = st.number_input("Dose/ha", value=float(loaded_data['produtos'][i]['dose'] if loaded_data and i < len(loaded_data['produtos']) else 0.0), key=f"d_{i}", format="%.3f")
-            un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(loaded_data['produtos'][i]['un'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["un"]), key=f"u_{i}")
-            form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(loaded_data['produtos'][i]['form'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["form"]), key=f"f_{i}_{p_ref}")
+            
+            nome_val = item_salvo['nome'] if item_salvo else p_ref
+            nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Qual o nome?", value=nome_val, key=f"n_{i}")
+            
+            dose_val = float(item_salvo['dose']) if item_salvo else 0.0
+            dose = st.number_input("Dose/ha", value=dose_val, key=f"d_{i}", format="%.3f")
+            
+            un_val = item_salvo['un'] if item_salvo else dados_p["un"]
+            un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(un_val), key=f"u_{i}")
+            
+            form_val = item_salvo['form'] if item_salvo else dados_p["form"]
+            form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(form_val), key=f"f_{i}_{p_ref}")
+            
             link = f"https://www.google.com/search?q=site:agrolink.com.br/agrolinkfito+{nome.replace(' ', '+')}"
             escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
-# --- CÁLCULOS ---
+# --- PROCESSAMENTO ---
 vol_total = area_total * taxa
 batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
@@ -97,7 +115,8 @@ area_sobra = sobra / taxa
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
 with col_save:
-    st.download_button("📥 Salvar JSON", json.dumps({"fazenda": fazenda, "area": area_total, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}, indent=4), f"receita_{fazenda}.json", "application/json")
+    receita_json = json.dumps({"fazenda": fazenda, "area": area_total, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}, indent=4)
+    st.download_button("📥 Salvar JSON", receita_json, f"receita_{fazenda}.json", "application/json")
 
 def gerar_zap(volume, tipo, area_c):
     ha = volume / taxa
@@ -127,4 +146,4 @@ if ordenados:
         st.dataframe(df_s, column_config={"🔗": st.column_config.LinkColumn(width="small")}, hide_index=True, use_container_width=True)
         st.link_button(f"📲 WhatsApp: Batida Final", gerar_zap(sobra, "FINAL", area_sobra))
 else:
-    st.info("💡 Selecione os produtos na barra lateral para gerar o plano de mistura.")
+    st.info("💡 Carregue uma receita ou selecione os produtos na barra lateral.")
