@@ -1,3 +1,2 @@
 streamlit
 panda
-fpdf2
