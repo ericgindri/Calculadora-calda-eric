@@ -6,7 +6,7 @@ import json
 
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
-# --- BANCO DE DADOS TÉCNICO ---
+# --- BANCO DE DADOS TÉCNICO ATUALIZADO (Doses Médias RS) ---
 DB_PRODUTOS = {
     "Bim Max": {"dose": 1.2, "un": "L", "form": "SC / FS (Suspensão)"},
     "Aproach Power": {"dose": 0.6, "un": "L", "form": "SC / FS (Suspensão)"},
@@ -15,7 +15,6 @@ DB_PRODUTOS = {
     "Nutrol Max": {"dose": 150.0, "un": "ml", "form": "Condicionador (Adjuvante)"},
     "Engeo Pleno S": {"dose": 200.0, "un": "ml", "form": "ZC (Suspensão Encapsulada)"},
     "Unanime": {"dose": 1.0, "un": "L", "form": "SL (Líquido Solúvel)"},
-    "WG (Grânulos)": {"dose": 0.2, "un": "kg", "form": "WG / DF (Grânulos)"},
     "Crucial": {"dose": 3.0, "un": "L", "form": "SL (Líquido Solúvel)"},
     "Expedition": {"dose": 0.15, "un": "L", "form": "SC / FS (Suspensão)"},
     "PingBR (Ouro Fino)": {"dose": 1.0, "un": "L", "form": "EC (Emulsão)"},
@@ -35,14 +34,12 @@ ORDEM_TECNICA = {
 
 st.title("🚜 Central de Mistura Eric")
 
-# --- SISTEMA DE RECEITAS ---
 with st.expander("💾 Salvar ou Carregar Receitas"):
     col_save, col_load = st.columns(2)
     with col_load:
         uploaded_file = st.file_uploader("Carregar arquivo de receita (.json)", type="json")
         loaded_data = json.load(uploaded_file) if uploaded_file else None
 
-# --- BARRA LATERAL ---
 with st.sidebar:
     st.header("📋 Operação")
     fazenda = st.text_input("Fazenda / Talhão", value=loaded_data['fazenda'] if loaded_data else "Geral")
@@ -60,13 +57,9 @@ with st.sidebar:
         p_ref = st.selectbox(f"Produto {i+1}", list(DB_PRODUTOS.keys()), index=list(DB_PRODUTOS.keys()).index(p_ref_val := p_def if p_def in DB_PRODUTOS else "Outro (Novo)"), key=f"sel_{i}")
         
         dados_p = DB_PRODUTOS[p_ref]
+        nome = st.text_input("Nome", value=loaded_data['produtos'][i]['nome'] if loaded_data and i < len(loaded_data['produtos']) else p_ref, key=f"n_{i}") if p_ref == "Outro (Novo)" else p_ref
         
-        if p_ref == "Outro (Novo)":
-            nome = st.text_input("Nome do Produto", value=loaded_data['produtos'][i]['nome'] if loaded_data and i < len(loaded_data['produtos']) else "Novo", key=f"n_{i}")
-        else:
-            nome = p_ref
-        
-        c1, col_vazio = st.columns([1, 1])
+        c1, col_v = st.columns([1,1])
         dose = c1.number_input("Dose/ha", value=float(loaded_data['produtos'][i]['dose'] if loaded_data and i < len(loaded_data['produtos']) else dados_p["dose"]), key=f"d_{i}")
         
         c_un, c_tipo = st.columns(2)
@@ -76,37 +69,19 @@ with st.sidebar:
         link = f"https://www.google.com.br/search?q=site%3Aagrolink.com.br%2Fagrolinkfito+{nome.replace(' ', '+')}"
         escolhidos.append({"p_ref": p_ref, "nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
-# --- BOTÃO DE SALVAR ---
-with col_save:
-    receita_atual = {"fazenda": fazenda, "area": area, "taxa": taxa, "tanque": tanque, "produtos": escolhidos}
-    st.download_button("📥 Baixar Receita (JSON)", json.dumps(receita_atual, indent=4), "receita_calda.json", "application/json")
-
-# --- CÁLCULOS ---
 vol_total = area * taxa
 batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
-def preparar_zap(volume, tipo):
-    ha = volume / taxa
-    msg = f"*📋 PLANO {tipo} - {fazenda.upper()}*\n💧 Água: {int(volume)}L\n---\n"
-    for i, p in enumerate(ordenados):
-        msg += f"{i+1}º - {p['nome']}: *{(p['dose']*ha):.2f} {p['un']}*\n"
-    return f"https://wa.me/?text={urllib.parse.quote(msg)}"
-
-# --- EXIBIÇÃO ---
 st.subheader(f"📝 Guia de Preparo: {fazenda}")
 c1, c2, c3 = st.columns(3)
 c1.metric("Calda Total", f"{vol_total} L"); c2.metric("Batidas Cheias", int(batidas)); c3.metric("Última Batida", f"{int(sobra)} L")
 
 if batidas > 0:
     st.success(f"✅ **Batidas de {int(tanque)}L**")
-    df = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(tanque/taxa)):.2f} {p['un']}", "Bula": p['bula']} for i, p in enumerate(ordenados)])
-    st.dataframe(df, column_config={"Bula": st.column_config.LinkColumn("Bula")}, hide_index=True)
-    st.link_button("📲 Enviar via WhatsApp", preparar_zap(tanque, "BATIDA CHEIA"))
+    st.table([{"#": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(tanque/taxa)):.2f} {p['un']}"} for i, p in enumerate(ordenados)])
 
 if sobra > 0:
-    st.warning(f"⚠️ **Batida Final ({int(sobra)}L)**")
-    df_s = pd.DataFrame([{"Ordem": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(sobra/taxa)):.2f} {p['un']}", "Bula": p['bula']} for i, p in enumerate(ordenados)])
-    st.dataframe(df_s, column_config={"Bula": st.column_config.LinkColumn("Bula")}, hide_index=True)
-    st.link_button("📲 Enviar via WhatsApp (Final)", preparar_zap(sobra, f"ÚLTIMA BATIDA"))
+    st.warning(f"⚠️ **Última Batida ({int(sobra)}L)**")
+    st.table([{"#": i+1, "Produto": p['nome'], "Qtd": f"{(p['dose']*(sobra/taxa)):.2f} {p['un']}"} for i, p in enumerate(ordenados)])
