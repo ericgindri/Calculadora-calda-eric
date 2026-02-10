@@ -3,14 +3,15 @@ import pandas as pd
 import math
 import urllib.parse
 
-# Configuração visual para facilitar a leitura no campo em São Francisco de Assis
+# Configuração para facilitar a leitura no campo e no Samsung Book
 st.set_page_config(page_title="Central de Mistura Eric", page_icon="🚜", layout="wide")
 
+# CSS para aumentar a fonte e destacar as informações para uso sob o sol
 st.markdown("""
     <style>
-    .stTable { font-size: 22px !important; }
-    div[data-testid="stExpander"] { font-size: 18px; }
-    .stMetric { background-color: #f0f2f6; padding: 15px; border-radius: 10px; }
+    .stTable { font-size: 24px !important; }
+    div[data-testid="stMetricValue"] { font-size: 32px !important; }
+    .stMarkdown p { font-size: 21px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -52,7 +53,7 @@ with st.sidebar:
     tanque = st.number_input("Misturador (L)", value=200.0)
     
     st.header("🧪 Calda")
-    n_prod = st.slider("Produtos", 1, 10, 5)
+    n_prod = st.slider("Produtos na Mistura", 1, 10, 5)
     
     escolhidos = []
     for i in range(n_prod):
@@ -64,9 +65,9 @@ with st.sidebar:
         nome = p_ref if p_ref != "Outro (Novo)" else st.text_input("Nome", key=f"n_{i}")
         dose = st.number_input("Dose/ha", value=0.0, key=f"d_{i}", format="%.3f")
         un = st.selectbox("Un.", ["L", "ml", "g", "kg"], index=["L", "ml", "g", "kg"].index(dados_p["un"]), key=f"u_{i}")
-        form = st.selectbox("Formulação", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(dados_p["form"]), key=f"f_{i}_{p_ref}")
+        form = st.selectbox("Tipo", list(ORDEM_TECNICA.keys()), index=list(ORDEM_TECNICA.keys()).index(dados_p["form"]), key=f"f_{i}_{p_ref}")
         
-        link = f"https://www.google.com.br/search?q=site%3Aagrolink.com.br%2Fagrolinkfito+{nome.replace(' ', '+')}"
+        link = f"https://www.google.com/search?q=site:agrolink.com.br/agrolinkfito+{nome.replace(' ', '+')}"
         escolhidos.append({"nome": nome, "dose": dose, "un": un, "form": form, "peso": ORDEM_TECNICA[form], "bula": link})
 
 # --- PROCESSAMENTO ---
@@ -75,18 +76,14 @@ batidas = math.floor(vol_total / tanque)
 sobra = vol_total % tanque
 ordenados = sorted(escolhidos, key=lambda x: x['peso'])
 
-# --- FUNÇÃO WHATSAPP ---
-def gerar_link_whatsapp(volume, label):
+# --- WHATSAPP ---
+def gerar_zap(volume, tipo):
     ha = volume / taxa
-    texto = f"*🚜 PLANO DE MISTURA - ERIC*\n"
-    texto += f"*📍 {fazenda.upper()} - {label}*\n"
-    texto += f"💧 Água: {int(volume)} Litros\n"
-    texto += f"----------------------------\n"
+    texto = f"*🚜 PLANO ERIC - {fazenda.upper()}*\n"
+    texto += f"💧 Água: {int(volume)}L ({tipo})\n"
+    texto += "----------------------------\n"
     for i, p in enumerate(ordenados):
-        qtd = p['dose'] * ha
-        texto += f"{i+1}º {p['nome']} ({p['form']}): *{qtd:.2f} {p['un']}*\n"
-    texto += f"----------------------------\n"
-    texto += "⚠️ _Mantenha a agitação constante!_"
+        texto += f"{i+1}º {p['nome']} ({p['form']}): *{(p['dose']*ha):.2f} {p['un']}*\n"
     return f"https://wa.me/?text={urllib.parse.quote(texto)}"
 
 # --- EXIBIÇÃO ---
@@ -94,7 +91,7 @@ st.subheader(f"📝 Plano de Trabalho: {fazenda}")
 c1, c2, c3 = st.columns(3)
 c1.metric("Calda Total", f"{vol_total} L")
 c2.metric("Batidas Cheias", int(batidas))
-c3.metric("Sobrou p/ Final", f"{int(sobra)} L")
+c3.metric("Batida Final", f"{int(sobra)} L")
 
 def exibir_tabela(volume, titulo, emoji):
     if volume > 0:
@@ -104,12 +101,13 @@ def exibir_tabela(volume, titulo, emoji):
                 "Ordem": i+1, 
                 "Produto": p['nome'], 
                 "Tipo": p['form'],
-                "Quantidade": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}",
+                "Dose/ha": f"{p['dose']} {p['un']}", # NOVA COLUNA
+                "Qtd p/ Misturar": f"{(p['dose']*(volume/taxa)):.2f} {p['un']}",
                 "🔗": p['bula']
             } for i, p in enumerate(ordenados)
         ])
         st.dataframe(df, column_config={"🔗": st.column_config.LinkColumn(width="small")}, hide_index=True, use_container_width=True)
-        st.link_button(f"📲 Enviar {titulo} via WhatsApp", gerar_link_whatsapp(volume, titulo))
+        st.link_button(f"📲 Enviar via WhatsApp", gerar_zap(volume, titulo))
 
-exibir_tabela(tanque if batidas > 0 else 0, f"FAZER {int(batidas)} VEZES", "✅")
-exibir_tabela(sobra, "ÚLTIMA BATIDA (FINAL)", "⚠️")
+exibir_tabela(tanque if batidas > 0 else 0, "BATIDA CHEIA", "✅")
+exibir_tabela(sobra, "BATIDA FINAL", "⚠️")
